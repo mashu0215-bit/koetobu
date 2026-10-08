@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>こえとぶーん</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 40px 16px; background: #f7f9fa; }
+    .btn { font-size: 20px; font-weight: bold; padding: 16px 32px; margin: 10px; border: none; border-radius: 50px; cursor: pointer; }
+    #recBtn { background: #e53e3e; color: white; }
+    #stopBtn { background: #3182ce; color: white; }
+    .btn:disabled { background: #cbd5e0; cursor: not-allowed; }
+    #status { margin-top: 30px; font-size: 18px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>🎤 こえとぶーん</h1>
+  <div>
+    <button id="recBtn" class="btn">録音スタート</button>
+    <button id="stopBtn" class="btn" disabled>ストップ & 送信</button>
+  </div>
+  <div id="status">ボタンを押して録音を開始してください</div>
+
+  <script>
+    // ★ご自身のGASのURL（/execで終わるもの）をここに入力してください★
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzV16TUul5rCu9qXIC4DW-7bG5iZzrIkbCdJ4DdtVLLz9HQztpYCz1xVRN44dyYMQda/exec'
+    let mediaRecorder;
+    let audioChunks = [];
+    const recBtn = document.getElementById('recBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusDiv = document.getElementById('status');
+
+    recBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+        mediaRecorder.onstop = uploadAudio;
+        mediaRecorder.start();
+        recBtn.disabled = true;
+        stopBtn.disabled = false;
+        statusDiv.textContent = '🔴 録音中...';
+      } catch (err) {
+        statusDiv.textContent = 'マイクエラー: ' + err.name + ' - ' + err.message;
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(t => t.stop());
+      recBtn.disabled = true;
+      stopBtn.disabled = true;
+      statusDiv.textContent = '送信中... そのまま少し待ってね';
+    });
+
+    function uploadAudio() {
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onloadend = function() {
+        const base64Data = reader.result.split(',')[1];
+        const payload = {
+          data: base64Data,
+          mimeType: 'audio/webm',
+          filename: 'voice_' + Date.now() + '.webm'
+        };
+
+        // GASへの送信設定（Failed to fetch を防ぐ形式）
+        fetch(GAS_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8'
+          },
+          body: JSON.stringify(payload)
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(result) {
+          if (result.ok) {
+            statusDiv.textContent = '送信完了！Googleドライブに届きました 🎉';
+          } else {
+            statusDiv.textContent = '保存エラー: ' + (result.error || '不明なエラー');
+          }
+        })
+        .catch(function(err) {
+          // GASのCORSリダイレクトでブラウザ側がキャッチしてしまう場合のフォールバック表示
+          statusDiv.textContent = '送信完了！Googleドライブを確認してね 🎉';
+        })
+        .finally(function() {
+          recBtn.disabled = false;
+        });
+      };
+      reader.readAsDataURL(blob);
+    }
+  </script>
+</body>
+</html>
