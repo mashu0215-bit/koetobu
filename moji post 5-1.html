@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ことばをおくろう</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      text-align: center;
+      padding: 30px 16px;
+      background: #f0f4f8;
+      color: #333;
+      margin: 0;
+    }
+    .card {
+      max-width: 480px;
+      margin: 0 auto;
+      background: white;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: #2b6cb0;
+    }
+    p.desc {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 24px;
+    }
+    .field {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+    .field label {
+      display: block;
+      font-size: 14px;
+      font-weight: bold;
+      color: #4a5568;
+      margin-bottom: 6px;
+    }
+    .field input {
+      width: 100%;
+      font-size: 18px;
+      padding: 12px 14px;
+      border: 2px solid #cbd5e0;
+      border-radius: 10px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .field input:focus {
+      border-color: #3182ce;
+    }
+    #sendBtn {
+      width: 100%;
+      font-size: 18px;
+      font-weight: bold;
+      background: #3182ce;
+      color: white;
+      border: none;
+      padding: 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: 8px;
+    }
+    #sendBtn:hover {
+      background: #2b6cb0;
+    }
+    #sendBtn:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+    }
+    #status {
+      font-size: 15px;
+      font-weight: bold;
+      color: #2b6cb0;
+      min-height: 24px;
+      margin-top: 14px;
+    }
+    .history {
+      margin-top: 24px;
+      text-align: left;
+      border-top: 1px dashed #e2e8f0;
+      padding-top: 16px;
+    }
+    .history h3 {
+      font-size: 14px;
+      color: #718096;
+      margin: 0 0 8px 0;
+    }
+    .tag-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .tag {
+      background: #ebf8ff;
+      color: #2b6cb0;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>💬 ことばをおくろう</h1>
+    <p class="desc">思いついた言葉をどんどん送ってみよう！</p>
+
+    <!-- 1. 言葉入力欄 -->
+    <div class="field">
+      <label for="wordInput">① ことば</label>
+      <input type="text" id="wordInput" placeholder="思いついた単語や文を入力..." autofocus>
+    </div>
+
+    <!-- 2. 名前入力欄 -->
+    <div class="field">
+      <label for="nameInput">② なまえ</label>
+      <input type="text" id="nameInput" placeholder="あなたのお名前">
+    </div>
+
+    <!-- 3. 送信ボタン -->
+    <button id="sendBtn">送信する</button>
+
+    <div id="status"></div>
+
+    <div class="history">
+      <h3>あなたが送ったことば:</h3>
+      <div id="tagContainer" class="tag-container"></div>
+    </div>
+  </div>
+
+  <script>
+    // ★スプレッドシート用GASのウェブアプリURL★
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxc842Kr_6pJpNAfWpvRjNAdk7c340HFtm3WaHXSUNvJvvPY_Am9v2meMs6cLx4YCIWdg/exec';
+
+    const wordInput = document.getElementById('wordInput');
+    const nameInput = document.getElementById('nameInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const statusDiv = document.getElementById('status');
+    const tagContainer = document.getElementById('tagContainer');
+
+    // 前回入力した名前があれば自動で復元
+    const savedName = localStorage.getItem('koetobu_user_name');
+    if (savedName) {
+      nameInput.value = savedName;
+    }
+
+    async function sendWord() {
+      const word = wordInput.value.trim();
+      const name = nameInput.value.trim();
+
+      if (!word) {
+        alert('「ことば」を入力してください！');
+        wordInput.focus();
+        return;
+      }
+      if (!name) {
+        alert('「なまえ」を入力してください！');
+        nameInput.focus();
+        return;
+      }
+
+      // 名前をブラウザに一時記憶（次の入力でも残るようにする）
+      localStorage.setItem('koetobu_user_name', name);
+
+      statusDiv.textContent = '送信中...';
+      sendBtn.disabled = true;
+
+      try {
+        await fetch(GAS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ word: word, name: name })
+        });
+
+        // 成功時の反映
+        statusDiv.textContent = '✨ 送信しました！';
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = word;
+        tagContainer.prepend(tag);
+
+        // 言葉欄だけをクリアして、すぐに次の言葉を打てるようにフォーカス
+        wordInput.value = '';
+        wordInput.focus();
+        setTimeout(() => { statusDiv.textContent = ''; }, 2500);
+      } catch (err) {
+        statusDiv.textContent = 'エラーが発生しました';
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    sendBtn.addEventListener('click', sendWord);
+
+    // エンターキーで送信
+    wordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!nameInput.value.trim()) {
+          nameInput.focus();
+        } else {
+          sendWord();
+        }
+      }
+    });
+
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendWord();
+      }
+    });
+  </script>
+</body>
+</html>
