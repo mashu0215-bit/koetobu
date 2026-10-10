@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>みんなのことば - ワードクラウド</title>
+  <!-- 軽量ワードクラウドライブラリ wordcloud2.js を読み込み -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(30, 41, 59, 0.8);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      z-index: 10;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .count-badge {
+      background: #3b82f6;
+      color: white;
+      font-size: 15px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-weight: normal;
+    }
+    .controls {
+      display: flex;
+      gap: 12px;
+    }
+    button {
+      background: #334155;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: #475569;
+    }
+    button.reset-btn {
+      background: #ef4444;
+      border: none;
+    }
+    button.reset-btn:hover {
+      background: #dc2626;
+    }
+    #canvas-container {
+      flex: 1;
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>
+      ☁️ みんなのことば
+      <span class="count-badge" id="totalCount">集まった数: 0</span>
+    </h1>
+    <div class="controls">
+      <button onclick="fetchWords()">🔄 今すぐ更新</button>
+      <button class="reset-btn" onclick="resetWords()">🗑️ リセット</button>
+    </div>
+  </header>
+
+  <div id="canvas-container">
+    <div id="loading">言葉を待っています...</div>
+    <canvas id="cloudCanvas"></canvas>
+  </div>
+
+  <script>
+    // ★先ほど発行されたスプレッドシート用GASのウェブアプリURLを貼り付け★
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxc842Kr_6pJpNAfWpvRjNAdk7c340HFtm3WaHXSUNvJvvPY_Am9v2meMs6cLx4YCIWdg/exec';
+
+    const canvas = document.getElementById('cloudCanvas');
+    const container = document.getElementById('canvas-container');
+    const totalCountEl = document.getElementById('totalCount');
+    const loadingEl = document.getElementById('loading');
+
+    let previousDataString = '';
+
+    function resizeCanvas() {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      fetchWords();
+    });
+    resizeCanvas();
+
+    // 鮮やかで見やすいカラーパレット
+    const colors = ['#38bdf8', '#fb7185', '#34d399', '#facc15', '#a78bfa', '#f472b6', '#60a5fa'];
+
+    async function fetchWords() {
+      try {
+        const res = await fetch(GAS_URL);
+        const data = await res.json();
+        if (!data.ok) return;
+
+        const words = data.words || [];
+        totalCountEl.textContent = '集まった数: ' + words.length;
+
+        if (words.length === 0) {
+          loadingEl.style.display = 'block';
+          loadingEl.textContent = '言葉を待っています...';
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          previousDataString = '';
+          return;
+        }
+
+        loadingEl.style.display = 'none';
+
+        // 出現回数をカウント
+        const freqMap = {};
+        words.forEach(w => {
+          freqMap[w] = (freqMap[w] || 0) + 1;
+        });
+
+        // 変化がなければ再描画しない（チラつき防止）
+        const currentDataString = JSON.stringify(freqMap);
+        if (currentDataString === previousDataString) return;
+        previousDataString = currentDataString;
+
+        // wordcloud2.js用のデータ形式 [[単語, 重み], ...]
+        const list = Object.entries(freqMap).map(([word, count]) => {
+          // 最低文字サイズを確保しつつ回数で拡大
+          return [word, Math.min(20 + count * 15, 90)];
+        });
+
+        WordCloud(canvas, {
+          list: list,
+          gridSize: 8,
+          weightFactor: 1,
+          fontFamily: 'sans-serif',
+          color: () => colors[Math.floor(Math.random() * colors.length)],
+          rotateRatio: 0.2,
+          rotationSteps: 2,
+          backgroundColor: '#0f172a',
+          drawOutOfBound: false,
+          shuffle: false
+        });
+
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // リセット処理（次の問い・授業へ切り替え）
+    async function resetWords() {
+      if (!confirm('集まった言葉をリセットしますか？（スプレッドシートの言葉がクリアされます）')) return;
+      try {
+        await fetch(GAS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'reset' })
+        });
+        setTimeout(fetchWords, 500);
+      } catch (err) {
+        alert('リセットに失敗しました');
+      }
+    }
+
+    // 最初にデータ取得 & 3秒ごとに自動ポーリング
+    fetchWords();
+    setInterval(fetchWords, 3000);
+  </script>
+</body>
+</html>
